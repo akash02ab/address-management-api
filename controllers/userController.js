@@ -56,21 +56,44 @@ async function isTokenValid(email, accessToken, refreshToken) {
     }
 }
 
-async function verifyAccessToken(accessToken) {
-    jwt.verify(accessToken, process.env.ACCESS_TOKEN_SECRET, async (err, authData) => {
+async function verifyAccessToken(email, accessToken) {
+    return jwt.verify(accessToken, process.env.ACCESS_TOKEN_SECRET, async (err) => {
         if(err) {
             const newAccessToken = jwt.sign({email}, process.env.ACCESS_TOKEN_SECRET, {
                 expiresIn: process.env.ACCESS_TOKEN_EXP_TIME,
             });
-            return {status: 'Login success', result: newAccessToken}; 
+            console.log('newAccessToken', newAccessToken)
+            return {status: 'Login success', accessToken: newAccessToken}; 
         } else {
             return {status: 'Login success', result: accessToken}; 
         }
       });
 }
 
+async function verifyEmailAndPassword(email, password) {
+    try {
+        let user = await userModel.findOne({email: email});
+        
+        if(user === null) {
+            return {status: false, result: "Invalid Email"};
+        }
+
+        let result = await bcrypt.compare(password, user.password);
+        
+        if(!result) {
+            return {status: false, result: "Invalid Password"};
+        }
+
+        return {status: true};
+    }
+    catch(err) {
+        return {status: false, result: err.message};
+    }
+}
+
 module.exports = {
     addNewUser,
     isTokenValid,
-    verifyAccessToken
+    verifyAccessToken,
+    verifyEmailAndPassword
 } 
