@@ -14,13 +14,12 @@ const UserSchema = new mongoose.Schema({
         type: String,
         required: true
     },
-    accessToken : {
-        type: String,
-        required: true
-    },
     refreshToken : {
         type: String,
-        required: true
+    },
+    addressList: {
+        type: [mongoose.SchemaTypes.ObjectId],
+        ref: 'Address'
     }
 });
 

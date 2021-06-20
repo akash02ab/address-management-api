@@ -9,6 +9,8 @@ const AddressController = require("./controllers/addressController");
 mongoose.connect(process.env.MONGODB_URL, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
+    useCreateIndex: true,
+    useFindAndModify: false
 });
 
 const app = express();
@@ -20,7 +22,7 @@ app.post("/signup", async (req, res) => {
     const response = await UserController.addNewUser(req.body);
 
     const { status, result } = response;
-    console.log(result);
+    
     if (status) {
         res.status(200).json({result});
     } else {
@@ -29,32 +31,62 @@ app.post("/signup", async (req, res) => {
 });
 
 app.post("/signin", async (req, res) => {
-    const {email, password, accessToken, refreshToken} = req.body;
+    const {email, password} = req.body;
 
-    let response = UserController.verifyEmailAndPassword(email, password);
+    let response = await UserController.verifyEmailAndPassword(email, password);
+    
+    const { status, result } = response;
+    
+    if(status) {
+        return res.status(200).json({status: "login successful", token: result});
+    }
+    else {
+        return res.status(401).json({error: result});
+    }
+});
 
-    if(!response.status) {
-        return res.status(401).json({error: response.result});
+app.post("/signout", async (req, res) => {
+    let response = await UserController.signOut(req.body.refreshToken);
+
+    const {status, result} = response;
+
+    if(status) {
+        return res.status(200).json({result});
+    }
+    else {
+        return res.status(401).json({error: result});
     }
 
+});
+
+const verifyUser = async (req, res, next) => {
+    const {accessToken, refreshToken} = req.body;
+    
     if(!accessToken || !refreshToken) {
         return res.status(401).json({error: "Access Denied"});
     }
 
-    response = await UserController.isTokenValid(email, accessToken, refreshToken);
-    const {status, result} = response;
+    let response = await UserController.isTokenValid(refreshToken);
     
+    const {status, result} = response;
+
     if(status) {
-        let token = await UserController.verifyAccessToken(email, accessToken);
-        console.log(token)
-        return res.status(200).json({status: "Login Successfull"});
+        response = await UserController.verifyAccessToken(accessToken);
+        
+        if(response.status) {
+            //how to send response from middleware to next callback
+            next();
+        }
+        else {
+            return res.status(401).json({error: response.result});
+        }
     }
     else {
-        return res.status(401).json({ error: result });
+        return res.status(403).json({ error: result });
     }
-});
+}
 
-app.post("/address", async (req, res) => {
+app.post("/address", verifyUser, async (req, res) => {
     const response = await AddressController.addNewAddress(req.body);
 
     const {status, result} = response;
@@ -67,7 +99,7 @@ app.post("/address", async (req, res) => {
     }
 });
 
-app.delete("/address", async (req, res) => {
+app.delete("/address", verifyUser, async (req, res) => {
     const response = await AddressController.deleteAddress(req.body);
     
     const {status, result} = response;
@@ -80,7 +112,7 @@ app.delete("/address", async (req, res) => {
     }
 });
 
-app.put("/address", async (req, res) => {
+app.put("/address", verifyUser, async (req, res) => {
     const response = await AddressController.updateAddress(req.body);
 
     const {status, result} = response;
@@ -93,22 +125,16 @@ app.put("/address", async (req, res) => {
     }
 });
 
-app.get("/address", async (req, res) => {
-    const response = await AddressController.getAllAddress();
-
-    const {status, result} = response;
-
-    if(status) {
-        return res.status(200).json({result});
+app.get("/address", verifyUser, async (req, res) => {
+    let response = null;
+    const query = req.query;
+    
+    if(query) {
+        response = await AddressController.getAddress(req.body, query);
     }
     else {
-        return res.status(500).json({result});
+        response = await AddressController.getAllAddress(req.body);
     }
-});
-
-app.get("/address/:val", async (req, res) => {
-    // console.log(req.params.val.city, req.query.state)
-    const response = await AddressController.getAddress(req.params.val);
 
     const {status, result} = response;
 

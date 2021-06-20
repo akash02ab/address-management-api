@@ -19,7 +19,8 @@ const AddressSchema = new mongoose.Schema({
     },
     addressline1: {
         type: String,
-        required: true
+        required: true,
+        unique: true
     },
     addressline2: {
         type: String

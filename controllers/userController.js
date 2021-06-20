@@ -3,6 +3,18 @@ const bcrypt = require('bcrypt');
 const jwt = require("jsonwebtoken");
 
 
+function getAccessToken(email) {
+    return jwt.sign({email}, process.env.ACCESS_TOKEN_SECRET, {
+        expiresIn: process.env.ACCESS_TOKEN_EXP_TIME,
+    });
+}
+
+function getRefreshToken(email) {
+    return jwt.sign({email}, process.env.REFRESH_TOKEN_SECRET, {
+        expiresIn: process.env.REFRESH_TOKEN_EXP_TIME,
+    });
+}
+
 async function addNewUser ({name, email, password}) {
     console.log(name, email, password);
 
@@ -23,56 +35,18 @@ async function addNewUser ({name, email, password}) {
     let hash = await bcrypt.hash(password, 10);
 
     try {
-        const refreshToken = jwt.sign({email}, process.env.REFRESH_TOKEN_SECRET, {
-            expiresIn: process.env.REFRESH_TOKEN_EXP_TIME,
-        });
-
-        const accessToken = jwt.sign({email}, process.env.ACCESS_TOKEN_SECRET, {
-            expiresIn: process.env.ACCESS_TOKEN_EXP_TIME,
-        });
-
-        let user = new User({name: name, email: email, password: hash, accessToken: accessToken, refreshToken: refreshToken});
+        let user = new User({name: name, email: email, password: hash});
         let savedUser = await user.save();
         return {status: true, result: savedUser};
     }
     catch(err) {
         return {status: false, result: err.message};
     }
-} 
-
-async function isTokenValid(email, accessToken, refreshToken) {
-    try {
-        const response = await User.findOne({email, accessToken, refreshToken});
-
-        if(!response) {
-            return {status: false, result: "Invalid token"};
-        }
-        else {
-            return {status: true, result: 'Access'};
-        }
-    }
-    catch(err) {
-        return {status: false, result: err.message}; 
-    }
-}
-
-async function verifyAccessToken(email, accessToken) {
-    return jwt.verify(accessToken, process.env.ACCESS_TOKEN_SECRET, async (err) => {
-        if(err) {
-            const newAccessToken = jwt.sign({email}, process.env.ACCESS_TOKEN_SECRET, {
-                expiresIn: process.env.ACCESS_TOKEN_EXP_TIME,
-            });
-            console.log('newAccessToken', newAccessToken)
-            return {status: 'Login success', accessToken: newAccessToken}; 
-        } else {
-            return {status: 'Login success', result: accessToken}; 
-        }
-      });
 }
 
 async function verifyEmailAndPassword(email, password) {
     try {
-        let user = await userModel.findOne({email: email});
+        let user = await User.findOne({email: email});
         
         if(user === null) {
             return {status: false, result: "Invalid Email"};
@@ -84,16 +58,81 @@ async function verifyEmailAndPassword(email, password) {
             return {status: false, result: "Invalid Password"};
         }
 
-        return {status: true};
+        const refreshToken = getRefreshToken(email);
+        const accessToken = getAccessToken(email);
+
+        let response  = await User.findOneAndUpdate({email}, {refreshToken});
+
+        return {status: true, result: {accessToken, refreshToken}};
     }
     catch(err) {
         return {status: false, result: err.message};
     }
 }
 
+async function isTokenValid(refreshToken) {
+    try {
+        const payload = jwt.decode(refreshToken, process.env.REFRESH_TOKEN_SECRET);
+        
+        const response = await User.findOne({email: payload.email, refreshToken: refreshToken});
+        
+        if(!response) {
+            return {status: false, result: "Invalid refresh token"};
+        }
+        else {
+            return jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET, async (err) => {
+                if(err) {
+                    return {status: false, result: "Refresh token expired, login again to get new pair of token"};
+                }
+                else {
+                    return {status: true, result: 'Access granted'};
+                }
+            });
+        }
+    }
+    catch(err) {
+        return {status: false, result: err.message}; 
+    }
+}
+
+
+async function verifyAccessToken(accessToken) {
+    return jwt.verify(accessToken, process.env.ACCESS_TOKEN_SECRET, async (err) => {
+        if(err) {
+            if(err.message == "invalid signature") {
+                return {status: false, result: "Invalid access token"};
+            }
+            else {
+                const payload = jwt.decode(accessToken, process.env.ACCESS_TOKEN_SECRET);
+                const newAccessToken = getAccessToken(payload.email);
+                return {status: true, result: newAccessToken}; 
+            }
+        } else {
+            return {status: true, result: accessToken}; 
+        }
+      });
+}
+
+async function signOut(refreshToken) {
+    try {
+        let response  = await User.findOneAndUpdate({refreshToken}, {refreshToken: ""});
+        
+        if(response) {
+            return {status: true, result: "Logout successfull"};
+        }
+        else {
+            return {status: false, result: "Token not found"}; 
+        }
+    }catch(err) {
+        return {status: false, result: err.message}; 
+    }
+}
+
+
 module.exports = {
     addNewUser,
     isTokenValid,
     verifyAccessToken,
-    verifyEmailAndPassword
+    verifyEmailAndPassword,
+    signOut
 } 

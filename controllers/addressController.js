@@ -1,9 +1,20 @@
 const Address = require("../models/address");
+const User = require("../models/user");
+const jwt = require("jsonwebtoken");
 
 async function addNewAddress(data) {
     try {
+        const {accessToken} = data;
+        
+        delete data.accessToken;
+        delete data.refreshToken;
+        
         const address = new Address(data);
         const savedAddress = await address.save();
+        const payload = jwt.decode(accessToken, process.env.ACCESS_TOKEN_SECRET);
+        
+        await User.findOneAndUpdate({email: payload.email}, { "$push": { "addressList": savedAddress._id } });
+
         return {status: true, result: savedAddress};
     }
     catch(err) {
@@ -11,12 +22,14 @@ async function addNewAddress(data) {
     }
 }
 
-async function deleteAddress(address) {
+async function deleteAddress(data) {
     try {
-        const {pincode} = address;
-        const thisAddress = await Address.deleteOne({pincode});
-      
-        if(thisAddress.deletedCount) {
+        const {addressline1, accessToken} = data;
+        const thisAddress = await Address.findOneAndDelete({addressline1});
+        const payload = jwt.decode(accessToken, process.env.ACCESS_TOKEN_SECRET);
+       
+        if(thisAddress) {
+            await User.findOneAndUpdate({email: payload.email}, {"$pull": {"addressList": thisAddress._id}});
             return {status: true, result: "Address deleted"};
         }
         else {
@@ -28,33 +41,48 @@ async function deleteAddress(address) {
     }
 }
 
-async function updateAddress(address) {
+async function updateAddress(data) {
     try {
-        const thisAddress = await Address.findOneAndUpdate({}, address, {new: true});
+        const {oldAddress, newAddress} = data;
+        const thisAddress = await Address.findOneAndUpdate(oldAddress, newAddress, {new: true});
 
-        return {status: true, result: thisAddress};
+        if(thisAddress) {
+            return {status: true, result: thisAddress};
+        }
+        else {
+            return {status: false, result: "No such address found"};
+        }
     }
     catch(err) {
         return {status: false, result: err.message};
     }
 }
 
-async function getAllAddress() {
+async function getAllAddress(data) {
     try {
-        const addresses = await Address.find({});
-
-        return {status: true, result: addresses};
+        const payload = jwt.decode(data.accessToken, process.env.ACCESS_TOKEN_SECRET);
+        const response = await User.findOne({email: payload.email}).populate("addressList");
+        return {status: true, result: response.addressList};
     }
     catch(err) {
         return {status: false, result: err.message};
     }
 }
 
-async function getAddress(param) {
+async function getAddress(data, param) {
     try {
-        const addresses = await Address.find({param});
+        const payload = jwt.decode(data.accessToken, process.env.ACCESS_TOKEN_SECRET);
+        const response = await User.findOne({email: payload.email}).populate("addressList");
+        
+        const address = response.addressList.filter(address => {
+            let value = true;
+            for(let key in param) {
+                value = value && (param[key] == address[key]);
+            }
+            return value;
+        });
 
-        return {status: true, result: addresses};
+        return {status: true, result: address};
     }
     catch(err) {
         return {status: false, result: err.message};
