@@ -1,19 +1,12 @@
 const Address = require("../models/address");
 const User = require("../models/user");
-const jwt = require("jsonwebtoken");
 
-async function addNewAddress(data) {
+async function addNewAddress(email, data) {
     try {
-        const {accessToken} = data;
-        
-        delete data.accessToken;
-        delete data.refreshToken;
-        
         const address = new Address(data);
         const savedAddress = await address.save();
-        const payload = jwt.decode(accessToken, process.env.ACCESS_TOKEN_SECRET);
         
-        await User.findOneAndUpdate({email: payload.email}, { "$push": { "addressList": savedAddress._id } });
+        await User.findOneAndUpdate({email: email}, { "$push": { "addressList": savedAddress._id } });
 
         return {status: true, result: savedAddress};
     }
@@ -22,14 +15,12 @@ async function addNewAddress(data) {
     }
 }
 
-async function deleteAddress(data) {
+async function deleteAddress(email, data) {
     try {
-        const {addressline1, accessToken} = data;
-        const thisAddress = await Address.findOneAndDelete({addressline1});
-        const payload = jwt.decode(accessToken, process.env.ACCESS_TOKEN_SECRET);
-       
-        if(thisAddress) {
-            await User.findOneAndUpdate({email: payload.email}, {"$pull": {"addressList": thisAddress._id}});
+        const {_id} = data;
+
+        if(_id) {
+            await User.findOneAndUpdate({email: email}, {"$pull": {"addressList": _id}});
             return {status: true, result: "Address deleted"};
         }
         else {
@@ -58,21 +49,20 @@ async function updateAddress(data) {
     }
 }
 
-async function getAllAddress(data) {
+async function getAllAddress(email) {
     try {
-        const payload = jwt.decode(data.accessToken, process.env.ACCESS_TOKEN_SECRET);
-        const response = await User.findOne({email: payload.email}).populate("addressList");
+        const response = await User.findOne({email: email}).populate("addressList");
         return {status: true, result: response.addressList};
     }
     catch(err) {
+        console.log(err.message)
         return {status: false, result: err.message};
     }
 }
 
-async function getAddress(data, param) {
+async function getAddress(email, param) {
     try {
-        const payload = jwt.decode(data.accessToken, process.env.ACCESS_TOKEN_SECRET);
-        const response = await User.findOne({email: payload.email}).populate("addressList");
+        const response = await User.findOne({email: email}).populate("addressList");
         
         const address = response.addressList.filter(address => {
             let value = true;

@@ -70,16 +70,18 @@ async function verifyEmailAndPassword(email, password) {
     }
 }
 
-async function isTokenValid(refreshToken) {
+async function isTokenValid(accessToken) {
     try {
-        const payload = jwt.decode(refreshToken, process.env.REFRESH_TOKEN_SECRET);
+        const payload = jwt.decode(accessToken, process.env.ACCESS_TOKEN_SECRET);
         
-        const response = await User.findOne({email: payload.email, refreshToken: refreshToken});
-        
+        const response = await User.findOne({email: payload.email});
+
         if(!response) {
-            return {status: false, result: "Invalid refresh token"};
+            return {status: false, result: "Invalid token"};
         }
         else {
+            let {refreshToken} = response;
+
             return jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET, async (err) => {
                 if(err) {
                     return {status: false, result: "Refresh token expired, login again to get new pair of token"};
@@ -105,7 +107,7 @@ async function verifyAccessToken(accessToken) {
             else {
                 const payload = jwt.decode(accessToken, process.env.ACCESS_TOKEN_SECRET);
                 const newAccessToken = getAccessToken(payload.email);
-                return {status: true, result: newAccessToken}; 
+                return {status: true, result: {accessToken: newAccessToken, email: payload.email}}; 
             }
         } else {
             return {status: true, result: accessToken}; 
@@ -121,7 +123,7 @@ async function signOut(refreshToken) {
             return {status: true, result: "Logout successfull"};
         }
         else {
-            return {status: false, result: "Token not found"}; 
+            return {status: false, result: "Invalid Token"}; 
         }
     }catch(err) {
         return {status: false, result: err.message}; 
